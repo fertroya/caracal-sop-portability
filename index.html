@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Caracal SOP Portability</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #f4f6f8; color: #17202b;
+  }
+  form { width: min(380px, calc(100% - 32px)); }
+  h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.01em; }
+  p { margin: 0 0 16px; color: #5a6573; line-height: 1.4; }
+  input {
+    width: 100%; box-sizing: border-box; font: inherit; padding: 10px 12px;
+    border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: inherit;
+  }
+  button {
+    margin-top: 12px; font: inherit; font-weight: 600; padding: 10px 14px;
+    border: 0; border-radius: 8px; background: #145f7a; color: #fff; cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: progress; }
+  .err { color: #b03838; min-height: 1.2em; margin-top: 10px; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #11151b; color: #e5e9ee; }
+    p { color: #9aa5b3; }
+    input { background: #171c24; border-color: #2a323d; }
+    button { background: #1d7a9a; }
+  }
+</style>
+</head>
+<body>
+  <form id="gate">
+    <h1>Caracal SOP Portability</h1>
+    <p>This page is password protected. Enter the password to open it.</p>
+    <input id="pw" type="password" autocomplete="current-password" autofocus required placeholder="Password">
+    <button id="go" type="submit">Open</button>
+    <div class="err" id="err" role="alert"></div>
+  </form>
+  <script>
+    const SALT_B64 = "e3Af3CntroD27IqtUAqjQg==";
+    const IV_B64 = "ufj8lNsV4cYL/SyU";
+    const ITERATIONS = 200000;
+    function b64ToBytes(b64) {
+      const bin = atob(b64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    }
+    document.getElementById("gate").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const err = document.getElementById("err");
+      const btn = document.getElementById("go");
+      err.textContent = "Opening…";
+      btn.disabled = true;
+      try {
+        const res = await fetch("payload.b64");
+        if (!res.ok) throw new Error("load");
+        const data = b64ToBytes((await res.text()).replace(/\s/g, ""));
+        const keyMaterial = await crypto.subtle.importKey(
+          "raw", new TextEncoder().encode(document.getElementById("pw").value),
+          "PBKDF2", false, ["deriveKey"]);
+        const key = await crypto.subtle.deriveKey(
+          { name: "PBKDF2", salt: b64ToBytes(SALT_B64), iterations: ITERATIONS, hash: "SHA-256" },
+          keyMaterial, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+        const plain = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: b64ToBytes(IV_B64) }, key, data);
+        const html = new TextDecoder().decode(plain);
+        document.open();
+        document.write(html);
+        document.close();
+      } catch (ex) {
+        btn.disabled = false;
+        err.textContent = ex && ex.name === "OperationError" ? "Wrong password." : "Could not open the page.";
+      }
+    });
+  </script>
+</body>
+</html>
